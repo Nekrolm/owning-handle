@@ -1,6 +1,12 @@
 use std::cell::Ref;
 
+/// Trait for handle-like types that can be duplicated without consuming the original.
+///
+/// `Duplicate` is used by `OwningHandle::clone` to produce a new handle that
+/// refers to the same underlying data as the original handle (for example
+/// cloning a `Ref<'_, T>` or copying a `&T`).
 pub trait Duplicate: Sized {
+    /// Return a duplicate of `self`.
     fn duplicate(&self) -> Self;
 }
 

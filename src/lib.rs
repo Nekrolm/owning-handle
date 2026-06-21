@@ -22,10 +22,19 @@ use crate::{
     hkt::{MutFunctor, RefFunctor},
 };
 
+/// Small utilities for converting references used when building handles.
 pub mod convert;
+/// Types and helpers for duplicating handle-like values.
 pub mod duplicate;
+/// Higher-kinded type (HKT) traits used internally for mapping handles.
 pub mod hkt;
 
+/// An owning handle that ties a derived "handle" to its owner.
+///
+/// `OwningHandle<O, H>` stores an `owner: O` together with a `handle: H`
+/// which is derived from the owner (for example `&T`, `Ref<'a, T>`,
+/// or `RefMut<'a, T>`). `OwningHandle` ensures the handle is dropped
+/// before the owner, preventing use-after-free or borrow-safety issues.
 pub struct OwningHandle<O, H> {
     // rust drops fields in order of their declaration
     // it's important: we need to drop handle before dropping owner
@@ -48,6 +57,11 @@ impl<O, H: DerefMut> DerefMut for OwningHandle<O, H> {
 }
 
 impl<O, H> OwningHandle<O, H> {
+    /// Consume the `OwningHandle`, dropping the internal handle first,
+    /// and return the owned value.
+    ///
+    /// Dropping the handle first is important for types like `Ref`/`RefMut`
+    /// that borrow from the owner.
     pub fn into_owner(this: Self) -> O {
         drop(this.handle);
         this.owner
@@ -58,8 +72,9 @@ impl<'a, O: StableDeref + 'a, H: ?Sized + 'a> OwningHandle<O, &'a H>
 where
     O: Deref<Target = H>,
 {
+    /// Create a new `OwningHandle` from an owner that dereferences to `H`.
     pub fn new(owner: O) -> Self {
-        owning_handle_ref(owner, convert::indentity_ref)
+        owning_handle_ref(owner, convert::identity_ref)
     }
 }
 
@@ -67,12 +82,18 @@ impl<'a, O: StableDeref + 'a, H: ?Sized + 'a> OwningHandle<O, &'a mut H>
 where
     O: DerefMut<Target = H>,
 {
+    /// Create a new mutable `OwningHandle` from an owner that dereferences to `H`.
     pub fn new_mut(owner: O) -> Self {
-        owning_handle_mut(owner, convert::indentity_mut)
+        owning_handle_mut(owner, convert::identity_mut)
     }
 }
 
 impl<O: CloneStableDeref, H: Duplicate> OwningHandle<O, H> {
+    /// Create a new `OwningHandle` by cloning the owner and duplicating the handle.
+    ///
+    /// Requires the owner to implement `CloneStableDeref` and the handle to
+    /// implement `Duplicate` so that the handle can be reproduced without
+    /// consuming the original.
     pub fn clone(this: &Self) -> Self {
         Self {
             owner: this.owner.clone(),
@@ -295,13 +316,13 @@ mod tests {
         // &H case
         let owner = Rc::new(String::from("hello"));
         let oh = OwningHandle::new(owner.clone());
-        let oh2 = RefFunctor::map_ref(oh, |s| &s[..1]);
+        let oh2 = OwningHandle::map_ref(oh, |s| &s[..1]);
         assert_eq!(&*oh2, "h");
 
         // Ref<'a, T> case
         let owner2 = Rc::new(RefCell::new(String::from("world")));
         let oh_r = owning_handle_ref(owner2.clone(), RefCell::borrow);
-        let oh_r2 = RefFunctor::map_ref(oh_r, |s| &s[1..]);
+        let oh_r2 = OwningHandle::map_ref(oh_r, |s| &s[1..]);
         assert_eq!(&*oh_r2, "orld");
     }
 
@@ -310,13 +331,13 @@ mod tests {
         // &'a mut H case with Box
         let owner = Box::new(vec![1i32, 2, 3]);
         let oh = OwningHandle::new_mut(owner);
-        let oh2 = MutFunctor::map_mut(oh, |v| &mut v[..1]);
+        let oh2 = OwningHandle::map_mut(oh, |v| &mut v[..1]);
         assert_eq!(&*oh2, &[1i32]);
 
         // RefMut<'a, T> case
         let owner2 = Box::new(RefCell::new(vec![4i32, 5]));
         let oh_rm = owning_handle_ref(owner2, RefCell::borrow_mut);
-        let oh_rm2 = MutFunctor::map_mut(oh_rm, |v| &mut v[..]);
+        let oh_rm2 = OwningHandle::map_mut(oh_rm, |v| &mut v[..]);
         assert_eq!(&*oh_rm2, &[4i32, 5]);
     }
 
