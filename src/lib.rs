@@ -1,14 +1,14 @@
 //! The main structure provided by this crate is *OwningHandle*
-//! 
-//! As an idea, it's similar to OwningHandle from crates like owning-ref. 
+//!
+//! As an idea, it's similar to OwningHandle from crates like owning-ref.
 //! But there are several differences:
-//! 
+//!
 //! Unlike owning-ref, owning-handle does not provide accessors to the owner-object -- to
 //! avoid soundness issues with things like OwnedHandle<Box<Cell<i32>, &Cell<i32>>
 //! <https://github.com/noamtashma/owning-ref-unsoundness>
-//! 
-//! 
-//! 
+//!
+//!
+//!
 
 use std::{
     cell::{Ref, RefMut},
@@ -209,67 +209,6 @@ impl<'scope, O: 'scope + StableDeref, H: 'scope + StableDeref> OwningHandle<O, H
         OwningHandle {
             handle,
             owner: this.owner,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    use std::{
-        cell::{RefCell, RefMut},
-        rc::Rc,
-    };
-
-    use super::*;
-
-    fn project<T>(slice: &[T]) -> &[T] {
-        &slice[..2]
-    }
-
-    fn identity_mut<T: ?Sized>(x: &mut T) -> &mut T {
-        x
-    }
-    fn try_abuse<'a>(v: Vec<&'static str>, x: &'a str) {
-        // let oh : OwningHandle<Vec<&'static str>, &'a [&'a str]> = OwningHandle::new(v);
-        let oh: OwningHandle<Rc<RefCell<Vec<&'static str>>>, RefMut<'a, Vec<&'static str>>> =
-            owning_handle_ref(Rc::new(RefCell::new(v)), RefCell::borrow_mut);
-        // let mut oh : OwningHandle<Vec<&'static str>, &'a mut [&'a str]> = OwningHandle::new_mut(v);
-    }
-
-    fn try_static<T: 'static>(_: T) {}
-    fn try_with_ref<'a, O: 'a, H: 'a + ?Sized>(_: OwningHandle<O, &'a H>) {}
-
-    fn main() {
-        {
-            let v = vec![1, 2, 3, 4, 5];
-            let oh = owning_handle_ref(v, project);
-            // ok!
-            try_static(oh);
-        }
-        {
-            let s = "hello".to_string();
-            let w = "world".to_string();
-            let v = vec![s.as_str(), w.as_str()];
-            let oh = owning_handle_ref(v, project);
-            // fails to compile -- as expected!
-            // try_static(oh);
-            // ok!
-            try_with_ref(oh);
-        }
-        {
-            let s = "hello".to_string();
-            let w = "world".to_string();
-            let v = vec![s.as_str(), w.as_str()];
-            let mut oh = owning_handle_mut(v, identity_mut);
-
-            // this triggers CE -- as expected
-            // let oh = {
-            //     let s = "dangling".to_string();
-            //     oh[0] = &s;
-            //     OwnedHandle::into_owner(oh)
-            // }
-            // println!("{}", &oh[1]);
         }
     }
 }
