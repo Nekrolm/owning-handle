@@ -3,5 +3,10 @@ name = "owning-handle"
 version = "0.1.0"
 edition = "2024"
 
+description = "Utility to keep depended object along with it's owner"
+license = "MIT"
+authors = ["Dmitry Sviridkin @Nekrolm"]
+repository = "https://github.com/Nekrolm/owning-handle"
+
 [dependencies]
 stable_deref_trait = "1"

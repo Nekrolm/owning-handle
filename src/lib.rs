@@ -1,3 +1,15 @@
+//! The main structure provided by this crate is *OwningHandle*
+//! 
+//! As an idea, it's similar to OwningHandle from crates like owning-ref. 
+//! But there are several differences:
+//! 
+//! Unlike owning-ref, owning-handle does not provide accessors to the owner-object -- to
+//! avoid soundness issues with things like OwnedHandle<Box<Cell<i32>, &Cell<i32>>
+//! <https://github.com/noamtashma/owning-ref-unsoundness>
+//! 
+//! 
+//! 
+
 use std::{
     cell::{Ref, RefMut},
     ops::{Deref, DerefMut},
