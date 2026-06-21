@@ -1,0 +1,25 @@
+pub trait FnOnce<A>: std::ops::FnOnce(A) -> Self::Out {
+    type Out;
+}
+
+impl<A, B, F> FnOnce<A> for F
+where
+    F: std::ops::FnOnce(A) -> B,
+{
+    type Out = B;
+}
+
+pub trait RefFunctor<'a, T: 'a + ?Sized>: 'a + Sized {
+    type Mapped<U: 'a + ?Sized>: RefFunctor<'a, U>;
+
+    fn map_ref<U: ?Sized>(this: Self, f: impl std::ops::FnOnce(&T) -> &U) -> Self::Mapped<U>;
+}
+
+pub trait MutFunctor<'a, T: 'a + ?Sized>: 'a + Sized {
+    type Mapped<U: 'a + ?Sized>: MutFunctor<'a, U>;
+
+    fn map_mut<U: ?Sized>(
+        this: Self,
+        f: impl std::ops::FnOnce(&mut T) -> &mut U,
+    ) -> Self::Mapped<U>;
+}
