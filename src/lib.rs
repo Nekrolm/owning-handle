@@ -38,7 +38,6 @@
 //! t2.join().unwrap();
 //! ```
 
-
 use std::{
     cell::{Ref, RefMut},
     ops::{Deref, DerefMut},
@@ -385,5 +384,42 @@ mod tests {
         }
         let ohm2 = OwningHandle::map_handle_mut(ohm, take_first_two_mut);
         assert_eq!(&*ohm2, &[1i32, 2]);
+    }
+
+    #[test]
+    fn hashmap_backing_storage_with_prelocked_refmut_working_place() {
+        use std::cell::RefCell;
+        use std::collections::HashMap;
+        use std::rc::Rc;
+
+        // backing storage: map keys to shared RefCell vectors
+        let mut backing: HashMap<String, Rc<RefCell<Vec<i32>>>> = HashMap::new();
+        // working_place: pre-lock RefMut for each entry and keep alongside the owner
+        let mut working_place: Vec<OwningHandle<Rc<RefCell<Vec<i32>>>, RefMut<'static, Vec<i32>>>> =
+            Vec::new();
+        let a = Rc::new(RefCell::new(vec![1, 2]));
+        let b = Rc::new(RefCell::new(vec![3, 4]));
+        backing.insert("a".to_string(), a.clone());
+        backing.insert("b".to_string(), b.clone());
+
+        for rc in [a, b] {
+            let oh: OwningHandle<_, RefMut<'static, Vec<i32>>> =
+                owning_handle_ref(rc, RefCell::borrow_mut);
+            working_place.push(oh);
+        }
+
+        // We can now update each vector without
+        // locking each individual RefCell
+        for _ in 0..3 {
+            for handle in &mut working_place {
+                handle.push(10);
+            }
+        }
+
+        drop(working_place);
+
+        // changes are reflected in the backing storage
+        assert_eq!(backing["a"].borrow().last(), Some(&10));
+        assert_eq!(backing["b"].borrow().last(), Some(&10));
     }
 }
