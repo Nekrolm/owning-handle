@@ -9,6 +9,35 @@
 //!
 //!
 //!
+//! # Example
+//!
+//! ```rust
+//! use std::sync::Arc;
+//! use std::thread;
+//! use owning_handle::OwningHandle;
+//! use owning_handle::hkt::RefFunctor;
+//!
+//! // create an `Arc<[u8]>` and split it into two halves
+//! let data: Arc<[u8]> = Arc::from(vec![1u8, 2, 3, 4].into_boxed_slice());
+//! // helper functions that work for any lifetime
+//! fn left_half(s: &[u8]) -> &[u8] { &s[..s.len()/2] }
+//! fn right_half(s: &[u8]) -> &[u8] { &s[s.len()/2..] }
+//!
+//! // clone the `Arc` and create two `OwningHandle`s pointing at disjoint halves
+//! let left = OwningHandle::map_ref(OwningHandle::new(data.clone()), |s| &s[..s.len()/2]);
+//! let right = OwningHandle::map_ref(OwningHandle::new(data.clone()), |s| &s[s.len()/2..]);
+//!
+//! // send each handle to its own thread
+//! let t1 = thread::spawn(move || {
+//!     assert_eq!(&*left, &[1u8, 2]);
+//! });
+//! let t2 = thread::spawn(move || {
+//!     assert_eq!(&*right, &[3u8, 4]);
+//! });
+//! t1.join().unwrap();
+//! t2.join().unwrap();
+//! ```
+
 
 use std::{
     cell::{Ref, RefMut},
