@@ -212,3 +212,128 @@ impl<'scope, O: 'scope + StableDeref, H: 'scope + StableDeref> OwningHandle<O, H
         }
     }
 }
+
+unsafe impl<O: StableDeref, H: StableDeref> StableDeref for OwningHandle<O, H> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[test]
+    fn new_and_deref() {
+        let owner = Rc::new(String::from("hello"));
+        let oh = OwningHandle::new(owner.clone());
+        assert_eq!(&*oh, "hello");
+    }
+
+    #[test]
+    fn new_mut_and_deref_mut() {
+        let owner = Box::new(String::from("a"));
+        let mut oh = OwningHandle::new_mut(owner);
+        oh.push_str("b");
+        assert_eq!(&*oh, "ab");
+    }
+
+    #[test]
+    fn into_owner_drops_handle_first() {
+        struct Owner(Rc<RefCell<Vec<&'static str>>>);
+        impl Drop for Owner {
+            fn drop(&mut self) {
+                self.0.borrow_mut().push("owner");
+            }
+        }
+        impl Deref for Owner {
+            type Target = RefCell<Vec<&'static str>>;
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+        unsafe impl StableDeref for Owner {}
+
+        struct Handle<'a>(RefMut<'a, Vec<&'static str>>);
+        impl Drop for Handle<'_> {
+            fn drop(&mut self) {
+                self.0.push("handle");
+            }
+        }
+
+        fn borrow_handle<'a>(r: &'a RefCell<Vec<&'static str>>) -> Handle<'a> {
+            Handle(r.borrow_mut())
+        }
+
+        {
+            let log = Rc::new(RefCell::new(Vec::new()));
+            let owner = Owner(log.clone());
+            let oh = owning_handle_ref(owner, borrow_handle);
+            let owner = OwningHandle::into_owner(oh);
+            assert_eq!(&*log.borrow(), &["handle"]);
+            drop(owner);
+            assert_eq!(&*log.borrow(), &["handle", "owner"]);
+        }
+
+        {
+            let log = Rc::new(RefCell::new(Vec::new()));
+            let owner = Owner(log.clone());
+            let oh = owning_handle_ref(owner, borrow_handle);
+            drop(oh);
+            assert_eq!(&*log.borrow(), &["handle", "owner"]);
+        }
+    }
+
+    #[test]
+    fn clone_works_for_clone_stable_deref_and_duplicate_handle() {
+        let owner = Rc::new(42);
+        let oh = OwningHandle::new(owner.clone());
+        let oh2 = OwningHandle::clone(&oh);
+        assert_eq!(*oh, *oh2);
+    }
+
+    #[test]
+    fn ref_functor_map_ref_for_ref_and_borrowed_ref() {
+        // &H case
+        let owner = Rc::new(String::from("hello"));
+        let oh = OwningHandle::new(owner.clone());
+        let oh2 = RefFunctor::map_ref(oh, |s| &s[..1]);
+        assert_eq!(&*oh2, "h");
+
+        // Ref<'a, T> case
+        let owner2 = Rc::new(RefCell::new(String::from("world")));
+        let oh_r = owning_handle_ref(owner2.clone(), RefCell::borrow);
+        let oh_r2 = RefFunctor::map_ref(oh_r, |s| &s[1..]);
+        assert_eq!(&*oh_r2, "orld");
+    }
+
+    #[test]
+    fn mut_functor_map_mut_for_mut_and_refmut() {
+        // &'a mut H case with Box
+        let owner = Box::new(vec![1i32, 2, 3]);
+        let oh = OwningHandle::new_mut(owner);
+        let oh2 = MutFunctor::map_mut(oh, |v| &mut v[..1]);
+        assert_eq!(&*oh2, &[1i32]);
+
+        // RefMut<'a, T> case
+        let owner2 = Box::new(RefCell::new(vec![4i32, 5]));
+        let oh_rm = owning_handle_ref(owner2, RefCell::borrow_mut);
+        let oh_rm2 = MutFunctor::map_mut(oh_rm, |v| &mut v[..]);
+        assert_eq!(&*oh_rm2, &[4i32, 5]);
+    }
+
+    #[test]
+    fn map_handle_ref_and_map_handle_mut() {
+        let oh = OwningHandle::new("hello".to_string());
+        fn take_first_two(s: &str) -> &str {
+            &s[..2]
+        }
+        let oh2 = OwningHandle::map_handle_ref(oh, take_first_two);
+        assert_eq!(&*oh2, "he");
+
+        let ohm = OwningHandle::new_mut(Box::new(vec![1i32, 2, 3]));
+        fn take_first_two_mut<'a>(v: &'a mut Vec<i32>) -> &'a mut [i32] {
+            &mut v[..2]
+        }
+        let ohm2 = OwningHandle::map_handle_mut(ohm, take_first_two_mut);
+        assert_eq!(&*ohm2, &[1i32, 2]);
+    }
+}
