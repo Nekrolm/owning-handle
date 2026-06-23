@@ -226,35 +226,18 @@ impl<'a, O: StableDeref + 'a, H: 'a + ?Sized> MutFunctor<'a, H> for OwningHandle
     }
 }
 
-impl<'scope, O: 'scope + StableDeref, H: 'scope + StableDeref> OwningHandle<O, H> {
-    pub fn map_handle_ref<F>(
-        this: Self,
-        f: F,
-    ) -> OwningHandle<O, <F as hkt::FnOnce<&'scope H::Target>>::Out>
+impl<O: StableDeref, H> OwningHandle<O, H> {
+    /// # Safety
+    /// This method is unsafe because extra obligations are applied to the callback
+    /// that we cannot statically enforce.
+    /// At this point H carries some fixed lifetime: e.g. it may be `&'static [u8]``
+    /// But this 'static doesn't mean the data lives for 'static lifetime.
+    /// F must not store this reference anywhere.
+    pub unsafe fn map_handle<F, U>(this: Self, f: F) -> OwningHandle<O, U>
     where
-        H: Deref<Target: 'scope>,
-        F: for<'a> hkt::FnOnce<&'a H::Target>,
+        F: std::ops::FnOnce(H) -> U,
     {
-        let target = this.handle.deref();
-        let target: &'scope _ = unsafe { &*(target as *const _) };
-        let handle = f(target);
-        OwningHandle {
-            handle,
-            owner: this.owner,
-        }
-    }
-
-    pub fn map_handle_mut<F>(
-        mut this: Self,
-        f: F,
-    ) -> OwningHandle<O, <F as hkt::FnOnce<&'scope mut H::Target>>::Out>
-    where
-        H: DerefMut<Target: 'scope>,
-        F: for<'a> hkt::FnOnce<&'a mut H::Target>,
-    {
-        let target = this.handle.deref_mut();
-        let target: &'scope mut _ = unsafe { &mut *(target as *mut _) };
-        let handle = f(target);
+        let handle = f(this.handle);
         OwningHandle {
             handle,
             owner: this.owner,
@@ -375,14 +358,14 @@ mod tests {
         fn take_first_two(s: &str) -> &str {
             &s[..2]
         }
-        let oh2 = OwningHandle::map_handle_ref(oh, take_first_two);
+        let oh2 = unsafe { OwningHandle::map_handle(oh, take_first_two) };
         assert_eq!(&*oh2, "he");
 
         let ohm = OwningHandle::new_mut(Box::new(vec![1i32, 2, 3]));
         fn take_first_two_mut<'a>(v: &'a mut Vec<i32>) -> &'a mut [i32] {
             &mut v[..2]
         }
-        let ohm2 = OwningHandle::map_handle_mut(ohm, take_first_two_mut);
+        let ohm2 = unsafe { OwningHandle::map_handle(ohm, take_first_two_mut) };
         assert_eq!(&*ohm2, &[1i32, 2]);
     }
 
